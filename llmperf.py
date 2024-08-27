@@ -131,6 +131,8 @@ def add_engines_parser(base_parser, vllm_batch_size = False):
     engine_parser = base_parser.add_subparsers(title="Engine", dest="engine", required=True)
     vllm_parser = engine_parser.add_parser("vllm", help="vLLM Engine")
     vllm_parser.add_argument("--model", type=str, default="", help="The model.")
+    vllm_parser.add_argument("--lora-path", type=str, default=None, help="The LoRA adapter path.")
+    vllm_parser.add_argument("--num-loras", type=int, default=1, help="Number of unique LoRA adapters.")
     vllm_parser.add_argument("--dtype", type=str, default="float16", help="The dtype.")
     vllm_parser.add_argument("--gpu_memory_utilization", type=float, default=0.9, help="GPU Memory fraction")
     if vllm_batch_size:

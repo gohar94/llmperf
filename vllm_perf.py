@@ -1,6 +1,7 @@
 from vllm import LLM, SamplingParams
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.engine.async_llm_engine import AsyncLLMEngine
+from vllm.lora.request import LoRARequest
 from vllm.utils import random_uuid
 from timeit import default_timer as timer
 
@@ -88,8 +89,12 @@ def rate_throughput_measurer(prompt, args):
                 ignore_eos=True,
                 max_tokens=args.output_tokens,
             )
+        lora_request = None
+        if args.lora_path:
+            lora_id = req_num % args.num_loras
+            lora_request = LoRARequest(f"llmperf-lora-{lora_id}", lora_id, args.lora_path)
         request_id = random_uuid()
-        results_generator = llm.generate(prompt, sampling_params, request_id)
+        results_generator = llm.generate(prompt, sampling_params, request_id, lora_request=lora_request)
         async for _ in results_generator:
             pass
         return args.output_tokens
@@ -134,4 +139,6 @@ def init_async_llm(args):
     engineArgs.gpu_memory_utilization = args.gpu_memory_utilization
     engineArgs.disable_log_stats = True
     engineArgs.disable_log_requests = True
+    engineArgs.enable_lora = args.lora_path is not None
+    engineArgs.max_loras = args.num_loras
     return AsyncLLMEngine.from_engine_args(engineArgs)
