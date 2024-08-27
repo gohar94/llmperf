@@ -92,6 +92,55 @@ def tpot_measurer(prompt, args):
         return mean_tpot
     return single_request
 
+def tpot_ttft_measurer(prompt, args):
+    llm = init_llm(args)
+
+    def single_request():
+        sampling_params = SamplingParams(
+                temperature=0.0,
+                ignore_eos=True,
+                max_tokens=args.output_tokens,
+            )
+        for i in range(args.batch_size):
+            lora_request = None
+            if args.lora_path:
+                lora_id = i % args.num_loras
+                lora_request = LoRARequest(
+                        f"l-{lora_id}",
+                        lora_id,
+                        args.lora_path
+                )
+            llm.add_request(str(i),
+                            prompt,
+                            sampling_params,
+                            lora_request=lora_request,
+            )
+        num_requests = 0
+        request_ft_time = {}
+        request_finish_time = {}
+        tpot = []
+        ttft = []
+        start_time = timer()
+        while llm.has_unfinished_requests():
+            request_outputs = llm.step()
+            for request_output in request_outputs:
+                if request_output.request_id not in request_ft_time:
+                    request_ft_time[request_output.request_id] = timer()
+                if request_output.finished:
+                    num_requests += 1
+                    request_finish_time[request_output.request_id] = timer()
+        for i in range(args.batch_size):
+            request_id = str(i)
+            req_tpot = (request_finish_time[request_id] - request_ft_time[request_id]) / (args.output_tokens - 1)
+            req_ttft = request_ft_time[request_id] - start_time
+            tpot.append(req_tpot)
+            ttft.append(req_ttft)
+        mean_tpot = sum(tpot) / len(tpot)
+        mean_ttft = sum(ttft) / len(ttft)
+        assert num_requests == args.batch_size
+        return mean_tpot, mean_ttft
+    return single_request
+
 def static_batch_measurer(prompt, args):
     llm = init_llm(args)
 

@@ -22,6 +22,22 @@ def run_test_n_times(test, n):
     print(f"Average: {total/n}")
     return values
 
+def run_multi_test_n_times(test, n):
+    total_1 = 0
+    total_2 = 0
+    values_1 = []
+    values_2 = []
+    for i in range(n):
+        value = test()
+        value_1, value_2 = value
+        total_1 += value_1
+        total_2 += value_2
+        print(f"Iteration {i}: {value_1} {value_2}")
+        values_1.append(value_1)
+        values_2.append(value_2)
+    print(f"Average: {total_1/n} {total_2}/n")
+    return values_1, values_2
+
 async def async_run_test_n_times(test, n):
     total = 0
     values = []
@@ -72,7 +88,7 @@ def run_ttft(args):
         print(f"TTFT test not implemented for {args.engine}")
         return
     traces = run_test_n_times(measurer, args.iterations)
-    write_traces("ttft_s", traces, args)
+    write_traces("ttft_s", traces, args, args.output_file)
 
 def run_tpot(args):
     prompt = read_prompt_from_file(args.prompt_file)
@@ -83,7 +99,20 @@ def run_tpot(args):
         print(f"TPOT test not implemented for {args.engine}")
         return
     traces = run_test_n_times(measurer, args.iterations)
-    write_traces("tpot_s", traces, args)
+    write_traces("tpot_s", traces, args, args.output_file)
+
+def run_tpot_ttft(args):
+    prompt = read_prompt_from_file(args.prompt_file)
+    measurer = None
+    if args.engine == "vllm":
+        measurer = vllm_perf.tpot_ttft_measurer(prompt, args)
+    else:
+        print(f"TPOT-TTFT test not implemented for {args.engine}")
+        return
+    traces = run_multi_test_n_times(measurer, args.iterations)
+    tpot_traces, ttft_traces = traces
+    write_traces("tpot_s", tpot_traces, args, args.tpot_output_file)
+    write_traces("ttft_s", ttft_traces, args, args.ttft_output_file)
 
 def run_static_batch(args):
     prompt = read_prompt_from_file(args.prompt_file)
@@ -94,7 +123,7 @@ def run_static_batch(args):
         print(f"Static batch test not implemented for {args.engine}")
         return
     traces = run_test_n_times(measurer, args.iterations)
-    write_traces("throughput_tps", traces, args)
+    write_traces("throughput_tps", traces, args, args.output_file)
 
 def run_rate_throughput(args):
     prompt = read_prompt_from_file(args.prompt_file)
@@ -137,8 +166,8 @@ def run_rate_sampled_output_throughput(args):
         return await send_sampled_request_periodically(measurer, samples, args.qps, args.t, args.total_requests)
     asyncio.run(async_run_test_n_times(wrapper, args.iterations))
 
-def write_traces(trace_name, trace_values, args):
-    if not args.output_file:
+def write_traces(trace_name, trace_values, args, output_file):
+    if not output_file:
         return
     header = [
             "model",
@@ -149,7 +178,7 @@ def write_traces(trace_name, trace_values, args):
             f"{trace_name}",
     ]
     header = f"{','.join(header)}\n"
-    is_write_header = not os.path.exists(args.output_file)
+    is_write_header = not os.path.exists(output_file)
     base = [
             args.model,
             args.test,
@@ -159,7 +188,7 @@ def write_traces(trace_name, trace_values, args):
     ]
     base = [str(x) for x in base]
     base = f"{','.join(base)}"
-    with open(args.output_file, 'a') as f:
+    with open(output_file, 'a') as f:
         if is_write_header:
             f.write(header)
         for trace in trace_values:
@@ -195,6 +224,14 @@ if __name__ == "__main__":
     tpot_parser.add_argument("--iterations", type=int, default=10, help="The iterations parameter.")
     tpot_parser.add_argument("--output_tokens", type=int, default=128, help="Number of tokens to retrieve")
     add_engines_parser(tpot_parser)
+
+    tpot_ttft_parser = test_parser.add_parser("tpot-ttft", help="Measure Time Per Output Token (TPOT) and Time To First Token (TTFT)")
+    tpot_ttft_parser.add_argument("--tpot_output_file", type=str, default=None, help="Path to a file to write TPOT traces into.")
+    tpot_ttft_parser.add_argument("--ttft_output_file", type=str, default=None, help="Path to a file to write TTFT traces into.")
+    tpot_ttft_parser.add_argument("--prompt_file", type=str, help="Path to a file containing the prompt.")
+    tpot_ttft_parser.add_argument("--iterations", type=int, default=10, help="The iterations parameter.")
+    tpot_ttft_parser.add_argument("--output_tokens", type=int, default=128, help="Number of tokens to retrieve")
+    add_engines_parser(tpot_ttft_parser)
 
     stb_parser = test_parser.add_parser("static_batch_throughput", help="Measure throughput for static batch")
     stb_parser.add_argument("--output_file", type=str, default=None, help="Path to a file to write traces into.")
@@ -238,6 +275,8 @@ if __name__ == "__main__":
         run_ttft(args)
     elif args.test == "tpot":
         run_tpot(args)
+    elif args.test == "tpot-ttft":
+        run_tpot_ttft(args)
     elif args.test == "static_batch_throughput":
         run_static_batch(args)
     elif args.test == "rate_throughput":
