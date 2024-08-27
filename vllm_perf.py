@@ -6,51 +6,90 @@ from vllm.utils import random_uuid
 from timeit import default_timer as timer
 
 def ttft_measurer(prompt, args):
-    llm = LLM(
-        model=args.model,
-        trust_remote_code=True,
-        dtype=args.dtype,
-    )
-    tokenizer = llm.get_tokenizer()
+    llm = init_llm(args)
+
     def single_request():
-        sampling_params = SamplingParams(
-                temperature=0.0,
-                ignore_eos=True,
-                max_tokens=1,
-            )
-        prompt_token_ids = tokenizer.encode(prompt)
-        llm._add_request(
-                prompt=None,
-                prompt_token_ids=prompt_token_ids,
-                sampling_params=sampling_params,
-                )
-        start = timer()
-        llm._run_engine(use_tqdm=False)
-        return timer() - start
-    return single_request
-
-def tpot_measurer(prompt, args):
-    engineArgs = AsyncEngineArgs(args.model)
-    engineArgs.trust_remote_code = True
-    engineArgs.dtype = args.dtype
-    engineArgs.disable_log_stats = True
-    engineArgs.disable_log_requests = True
-    llm = AsyncLLMEngine.from_engine_args(engineArgs)
-
-    async def single_request():
         sampling_params = SamplingParams(
                 temperature=0.0,
                 ignore_eos=True,
                 max_tokens=args.output_tokens,
             )
-        request_id = random_uuid()
-        results_generator = llm.generate(prompt, sampling_params, request_id)
-        i = 0
-        async for _ in results_generator:
-            if i == 0:
-                start = timer()
-            i += 1
-        return (timer() - start) / (i - 1)
+        for i in range(args.batch_size):
+            lora_request = None
+            if args.lora_path:
+                lora_id = i % args.num_loras
+                lora_request = LoRARequest(
+                        f"l-{lora_id}",
+                        lora_id,
+                        args.lora_path
+                )
+            llm.add_request(str(i),
+                            prompt,
+                            sampling_params,
+                            lora_request=lora_request,
+            )
+        num_requests = 0
+        request_ft_time = {}
+        ttft = []
+        start_time = timer()
+        while llm.has_unfinished_requests():
+            request_outputs = llm.step()
+            for request_output in request_outputs:
+                if request_output.request_id not in request_ft_time:
+                    request_ft_time[request_output.request_id] = timer()
+                if request_output.finished:
+                    num_requests += 1
+        for i in range(args.batch_size):
+            request_id = str(i)
+            req_ttft = request_ft_time[request_id] - start_time
+            ttft.append(req_ttft)
+        mean_ttft = sum(ttft) / len(ttft)
+        assert num_requests == args.batch_size
+        return mean_ttft
+    return single_request
+
+def tpot_measurer(prompt, args):
+    llm = init_llm(args)
+
+    def single_request():
+        sampling_params = SamplingParams(
+                temperature=0.0,
+                ignore_eos=True,
+                max_tokens=args.output_tokens,
+            )
+        for i in range(args.batch_size):
+            lora_request = None
+            if args.lora_path:
+                lora_id = i % args.num_loras
+                lora_request = LoRARequest(
+                        f"l-{lora_id}",
+                        lora_id,
+                        args.lora_path
+                )
+            llm.add_request(str(i),
+                            prompt,
+                            sampling_params,
+                            lora_request=lora_request,
+            )
+        num_requests = 0
+        request_ft_time = {}
+        request_finish_time = {}
+        tpot = []
+        while llm.has_unfinished_requests():
+            request_outputs = llm.step()
+            for request_output in request_outputs:
+                if request_output.request_id not in request_ft_time:
+                    request_ft_time[request_output.request_id] = timer()
+                if request_output.finished:
+                    num_requests += 1
+                    request_finish_time[request_output.request_id] = timer()
+        for i in range(args.batch_size):
+            request_id = str(i)
+            req_tpot = (request_finish_time[request_id] - request_ft_time[request_id]) / (args.output_tokens - 1)
+            tpot.append(req_tpot)
+        mean_tpot = sum(tpot) / len(tpot)
+        assert num_requests == args.batch_size
+        return mean_tpot
     return single_request
 
 def static_batch_measurer(prompt, args):
@@ -66,20 +105,24 @@ def static_batch_measurer(prompt, args):
             lora_request = None
             if args.lora_path:
                 lora_id = i % args.num_loras
-                lora_request = LoRARequest(f"llmperf-lora-{lora_id}", lora_id, args.lora_path)
+                lora_request = LoRARequest(
+                        f"l-{lora_id}",
+                        lora_id,
+                        args.lora_path
+                )
             llm.add_request(str(i),
                             prompt,
                             sampling_params,
                             lora_request=lora_request,
             )
-        done = 0
+        num_requests = 0
         start = timer()
         while llm.has_unfinished_requests():
             request_outputs = llm.step()
             for request_output in request_outputs:
                 if request_output.finished:
-                    done += 1
-        assert done == args.batch_size
+                    num_requests += 1
+        assert num_requests == args.batch_size
         total_time = timer() - start
         tokens_count = args.batch_size * args.output_tokens
         return tokens_count / total_time
@@ -97,9 +140,14 @@ def rate_throughput_measurer(prompt, args):
         lora_request = None
         if args.lora_path:
             lora_id = req_num % args.num_loras
-            lora_request = LoRARequest(f"llmperf-lora-{lora_id}", lora_id, args.lora_path)
+            lora_request = LoRARequest(f"l-{lora_id}", lora_id, args.lora_path)
         request_id = random_uuid()
-        results_generator = llm.generate(prompt, sampling_params, request_id, lora_request=lora_request)
+        results_generator = llm.generate(
+                prompt,
+                sampling_params,
+                request_id,
+                lora_request=lora_request
+        )
         async for _ in results_generator:
             pass
         return args.output_tokens
@@ -114,7 +162,11 @@ def sample_rate_throughput_measurer(args):
                 max_tokens=sample["output_len"],
             )
         request_id = random_uuid()
-        results_generator = llm.generate(sample["prompt"], sampling_params, request_id)
+        results_generator = llm.generate(
+                sample["prompt"],
+                sampling_params,
+                request_id
+        )
         async for _ in results_generator:
             pass
         return sample["output_len"]
@@ -129,7 +181,11 @@ def sample_output_rate_throughput_measurer(args):
                 max_tokens=4096,
             )
         request_id = random_uuid()
-        results_generator = llm.generate(sample["prompt"], sampling_params, request_id)
+        results_generator = llm.generate(
+                sample["prompt"],
+                sampling_params,
+                request_id
+        )
         i = 0
         async for _ in results_generator:
             i += 1
@@ -145,7 +201,8 @@ def init_async_llm(args):
     engineArgs.disable_log_stats = True
     engineArgs.disable_log_requests = True
     engineArgs.enable_lora = args.lora_path is not None
-    engineArgs.max_loras = args.num_loras
+    if args.num_loras > 0:
+        engineArgs.max_loras = args.num_loras
     return AsyncLLMEngine.from_engine_args(engineArgs)
 
 def init_llm(args):
@@ -156,5 +213,6 @@ def init_llm(args):
     engineArgs.disable_log_stats = True
     engineArgs.disable_log_requests = True
     engineArgs.enable_lora = args.lora_path is not None
-    engineArgs.max_loras = args.num_loras
+    if args.num_loras > 0:
+        engineArgs.max_loras = args.num_loras
     return LLMEngine.from_engine_args(engineArgs)

@@ -3,6 +3,7 @@ import vllm_perf
 import asyncio
 import math
 import json
+import os
 from timeit import default_timer as timer
 
 def read_prompt_from_file(file_path):
@@ -12,19 +13,25 @@ def read_prompt_from_file(file_path):
 
 def run_test_n_times(test, n):
     total = 0
+    values = []
     for i in range(n):
         value = test()
         total += value
         print(f"Iteration {i}: {value}")
+        values.append(value)
     print(f"Average: {total/n}")
+    return values
 
 async def async_run_test_n_times(test, n):
     total = 0
+    values = []
     for i in range(n):
         value = await test()
         total += value
         print(f"Iteration {i}: {value}")
+        values.append(value)
     print(f"Average: {total/n}")
+    return values
 
 async def send_request_periodically(request, qps, t, total):
     tasks = []
@@ -64,7 +71,8 @@ def run_ttft(args):
     else:
         print(f"TTFT test not implemented for {args.engine}")
         return
-    run_test_n_times(measurer, args.iterations)
+    traces = run_test_n_times(measurer, args.iterations)
+    write_traces("ttft_s", traces, args)
 
 def run_tpot(args):
     prompt = read_prompt_from_file(args.prompt_file)
@@ -74,7 +82,8 @@ def run_tpot(args):
     else:
         print(f"TPOT test not implemented for {args.engine}")
         return
-    asyncio.run(async_run_test_n_times(measurer, args.iterations))
+    traces = run_test_n_times(measurer, args.iterations)
+    write_traces("tpot_s", traces, args)
 
 def run_static_batch(args):
     prompt = read_prompt_from_file(args.prompt_file)
@@ -84,7 +93,8 @@ def run_static_batch(args):
     else:
         print(f"Static batch test not implemented for {args.engine}")
         return
-    run_test_n_times(measurer, args.iterations)
+    traces = run_test_n_times(measurer, args.iterations)
+    write_traces("throughput_tps", traces, args)
 
 def run_rate_throughput(args):
     prompt = read_prompt_from_file(args.prompt_file)
@@ -127,16 +137,44 @@ def run_rate_sampled_output_throughput(args):
         return await send_sampled_request_periodically(measurer, samples, args.qps, args.t, args.total_requests)
     asyncio.run(async_run_test_n_times(wrapper, args.iterations))
 
-def add_engines_parser(base_parser, vllm_batch_size = False):
+def write_traces(trace_name, trace_values, args):
+    if not args.output_file:
+        return
+    header = [
+            "model",
+            "test",
+            "lora",
+            "num_loras",
+            "batch_size",
+            f"{trace_name}",
+    ]
+    header = f"{','.join(header)}\n"
+    is_write_header = not os.path.exists(args.output_file)
+    base = [
+            args.model,
+            args.test,
+            args.lora_path,
+            args.num_loras,
+            args.batch_size,
+    ]
+    base = [str(x) for x in base]
+    base = f"{','.join(base)}"
+    with open(args.output_file, 'a') as f:
+        if is_write_header:
+            f.write(header)
+        for trace in trace_values:
+            line = f"{base},{trace}\n"
+            f.write(line)
+
+def add_engines_parser(base_parser):
     engine_parser = base_parser.add_subparsers(title="Engine", dest="engine", required=True)
     vllm_parser = engine_parser.add_parser("vllm", help="vLLM Engine")
     vllm_parser.add_argument("--model", type=str, default="", help="The model.")
-    vllm_parser.add_argument("--lora-path", type=str, default=None, help="The LoRA adapter path.")
-    vllm_parser.add_argument("--num-loras", type=int, default=1, help="Number of unique LoRA adapters.")
+    vllm_parser.add_argument("--lora_path", type=str, default=None, help="The LoRA adapter path.")
+    vllm_parser.add_argument("--num_loras", type=int, default=0, help="Number of unique LoRA adapters.")
     vllm_parser.add_argument("--dtype", type=str, default="float16", help="The dtype.")
     vllm_parser.add_argument("--gpu_memory_utilization", type=float, default=0.9, help="GPU Memory fraction")
-    if vllm_batch_size:
-        vllm_parser.add_argument("--batch_size", type=int, default=128, help="The batch size.")
+    vllm_parser.add_argument("--batch_size", type=int, default=128, help="The batch size.")
 
 
 if __name__ == "__main__":
@@ -145,27 +183,25 @@ if __name__ == "__main__":
     test_parser = parser.add_subparsers(title="Test", dest="test", required=True)
     
     ttft_parser = test_parser.add_parser("ttft", help="Measure Time To First Token (TTFT)")
+    ttft_parser.add_argument("--output_file", type=str, default=None, help="Path to a file to write traces into.")
     ttft_parser.add_argument("--prompt_file", type=str, help="Path to a file containing the prompt.")
     ttft_parser.add_argument("--iterations", type=int, default=10, help="The iterations parameter.")
+    ttft_parser.add_argument("--output_tokens", type=int, default=128, help="Number of tokens to retrieve")
     add_engines_parser(ttft_parser)
 
     tpot_parser = test_parser.add_parser("tpot", help="Measure Time Per Output Token (TPOT)")
+    tpot_parser.add_argument("--output_file", type=str, default=None, help="Path to a file to write traces into.")
     tpot_parser.add_argument("--prompt_file", type=str, help="Path to a file containing the prompt.")
     tpot_parser.add_argument("--iterations", type=int, default=10, help="The iterations parameter.")
     tpot_parser.add_argument("--output_tokens", type=int, default=128, help="Number of tokens to retrieve")
     add_engines_parser(tpot_parser)
 
     stb_parser = test_parser.add_parser("static_batch_throughput", help="Measure throughput for static batch")
+    stb_parser.add_argument("--output_file", type=str, default=None, help="Path to a file to write traces into.")
     stb_parser.add_argument("--prompt_file", type=str, help="Path to a file containing the prompt.")
     stb_parser.add_argument("--iterations", type=int, default=10, help="The iterations parameter.")
     stb_parser.add_argument("--output_tokens", type=int, default=128, help="Number of tokens to retrieve")
-    stb_parser.add_argument("--batch_size", type=int, default=128, help="Number of sequences to batch")
-    stb_engine_parser = stb_parser.add_subparsers(title="Engine", dest="engine", required=True)
-    stb_vllm_parser = stb_engine_parser.add_parser("vllm", help="vLLM Engine")
-    stb_vllm_parser.add_argument("--model", type=str, default="", help="The model.")
-    stb_vllm_parser.add_argument("--dtype", type=str, default="float16", help="The dtype.")
-    stb_vllm_parser.add_argument("--lora-path", type=str, default=None, help="The LoRA adapter path.")
-    stb_vllm_parser.add_argument("--num-loras", type=int, default=1, help="Number of unique LoRA adapters.")
+    add_engines_parser(stb_parser)
 
     rth_parser = test_parser.add_parser("rate_throughput", help="Measure throughput with sending requests at constant rate")
     rth_parser.add_argument("--prompt_file", type=str, help="Path to a file containing the prompt.")
@@ -174,7 +210,7 @@ if __name__ == "__main__":
     rth_parser.add_argument("--qps", type=int, default=4, help="Number of queries to send per second")
     rth_parser.add_argument("--t", type=int, default=1, help="Time frame to send the QPS amount requests")
     rth_parser.add_argument("--total_requests", type=int, default=5000, help="Number of requests to send in total")
-    add_engines_parser(rth_parser, True)
+    add_engines_parser(rth_parser)
 
     rst_parser = test_parser.add_parser("rate_sampled_throughput", help="Measure throughput with sending requests at constant rate")
     rst_parser.add_argument("--dataset", type=str, help="Path to a file containing the dataset.")
@@ -182,7 +218,7 @@ if __name__ == "__main__":
     rst_parser.add_argument("--qps", type=int, default=4, help="Number of queries to send per second (Per t)")
     rst_parser.add_argument("--t", type=int, default=1, help="Time frame to send the QPS amount requests")
     rst_parser.add_argument("--total_requests", type=int, default=5000, help="Number of requests to send in total")
-    add_engines_parser(rst_parser, True)
+    add_engines_parser(rst_parser)
 
     rsot_parser = test_parser.add_parser("rate_sampled_output_throughput", help="Measure throughput with sending requests at constant rate")
     rsot_parser.add_argument("--dataset", type=str, help="Path to a file containing the dataset.")
@@ -192,7 +228,7 @@ if __name__ == "__main__":
     rsot_parser.add_argument("--total_requests", type=int, default=5000, help="Number of requests to send in total")
     rsot_parser.add_argument("--temperature", type=float, default=1, help="Temperature in sampling phase")
     rsot_parser.add_argument("--top_k", type=int, default=15, help="Tok K in sampling phase")
-    add_engines_parser(rsot_parser, True)
+    add_engines_parser(rsot_parser)
     
     args = parser.parse_args()
     print(args)
