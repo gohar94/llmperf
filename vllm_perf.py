@@ -1,6 +1,6 @@
 from vllm import LLM, SamplingParams
-from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.engine.async_llm_engine import AsyncLLMEngine
+from vllm.engine.arg_utils import EngineArgs, AsyncEngineArgs
+from vllm.engine.async_llm_engine import LLMEngine, AsyncLLMEngine
 from vllm.lora.request import LoRARequest
 from vllm.utils import random_uuid
 from timeit import default_timer as timer
@@ -54,27 +54,32 @@ def tpot_measurer(prompt, args):
     return single_request
 
 def static_batch_measurer(prompt, args):
-    llm = LLM(
-        model=args.model,
-        trust_remote_code=True,
-        dtype=args.dtype,
-    )
-    tokenizer = llm.get_tokenizer()
+    llm = init_llm(args)
+
     def single_request():
         sampling_params = SamplingParams(
                 temperature=0.0,
                 ignore_eos=True,
                 max_tokens=args.output_tokens,
             )
-        prompt_token_ids = tokenizer.encode(prompt)
-        for _ in range(args.batch_size):
-            llm._add_request(
-                prompt=None,
-                prompt_token_ids=prompt_token_ids,
-                sampling_params=sampling_params,
-                )
+        for i in range(args.batch_size):
+            lora_request = None
+            if args.lora_path:
+                lora_id = i % args.num_loras
+                lora_request = LoRARequest(f"llmperf-lora-{lora_id}", lora_id, args.lora_path)
+            llm.add_request(str(i),
+                            prompt,
+                            sampling_params,
+                            lora_request=lora_request,
+            )
+        done = 0
         start = timer()
-        llm._run_engine(use_tqdm=True)
+        while llm.has_unfinished_requests():
+            request_outputs = llm.step()
+            for request_output in request_outputs:
+                if request_output.finished:
+                    done += 1
+        assert done == args.batch_size
         total_time = timer() - start
         tokens_count = args.batch_size * args.output_tokens
         return tokens_count / total_time
@@ -142,3 +147,14 @@ def init_async_llm(args):
     engineArgs.enable_lora = args.lora_path is not None
     engineArgs.max_loras = args.num_loras
     return AsyncLLMEngine.from_engine_args(engineArgs)
+
+def init_llm(args):
+    engineArgs = EngineArgs(args.model)
+    engineArgs.trust_remote_code = True
+    engineArgs.dtype = args.dtype
+    engineArgs.max_num_seqs = args.batch_size
+    engineArgs.disable_log_stats = True
+    engineArgs.disable_log_requests = True
+    engineArgs.enable_lora = args.lora_path is not None
+    engineArgs.max_loras = args.num_loras
+    return LLMEngine.from_engine_args(engineArgs)

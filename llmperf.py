@@ -164,6 +164,8 @@ if __name__ == "__main__":
     stb_vllm_parser = stb_engine_parser.add_parser("vllm", help="vLLM Engine")
     stb_vllm_parser.add_argument("--model", type=str, default="", help="The model.")
     stb_vllm_parser.add_argument("--dtype", type=str, default="float16", help="The dtype.")
+    stb_vllm_parser.add_argument("--lora-path", type=str, default=None, help="The LoRA adapter path.")
+    stb_vllm_parser.add_argument("--num-loras", type=int, default=1, help="Number of unique LoRA adapters.")
 
     rth_parser = test_parser.add_parser("rate_throughput", help="Measure throughput with sending requests at constant rate")
     rth_parser.add_argument("--prompt_file", type=str, help="Path to a file containing the prompt.")
