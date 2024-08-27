@@ -50,12 +50,6 @@ def save_prompts_vllm(samples):
     with open('vllm_output.json', 'w') as json_file:
         json.dump(json_data, json_file)
 
-def save_prompts_trtllm(samples):
-    new_array = [(item[1], item[3]) for item in samples]
-    json_data = [{"input_ids": item[0], "output_len": item[1]} for item in new_array]
-    with open('trtllm_output.json', 'w') as json_file:
-        json.dump(json_data, json_file)
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Benchmark the throughput.")
     parser.add_argument("--dataset",

@@ -82,7 +82,7 @@ def static_batch_measurer(prompt, args):
 def rate_throughput_measurer(prompt, args):
     llm = init_async_llm(args)
 
-    async def single_request():
+    async def single_request(req_num):
         sampling_params = SamplingParams(
                 temperature=0.0,
                 ignore_eos=True,

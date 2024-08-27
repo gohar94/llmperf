@@ -1,8 +1,5 @@
 import argparse
-import openai_perf
-import tgi_perf
 import vllm_perf
-import triton_perf
 import asyncio
 import math
 import json
@@ -32,9 +29,11 @@ async def async_run_test_n_times(test, n):
 async def send_request_periodically(request, qps, t, total):
     tasks = []
     start = timer()
+    req_num = 0
     for _ in range(math.floor(total/qps)):
         for _ in range(qps):
-            task = asyncio.create_task(request())
+            req_num += 1
+            task = asyncio.create_task(request(req_num))
             tasks.append(task)
         await asyncio.sleep(t)
     results = await asyncio.gather(*tasks)
@@ -62,12 +61,6 @@ def run_ttft(args):
     measurer = None
     if args.engine == "vllm":
         measurer = vllm_perf.ttft_measurer(prompt, args)
-    elif args.engine == "openai":
-        measurer = openai_perf.ttft_measurer(prompt, args)
-    elif args.engine == "tgi":
-        measurer = tgi_perf.ttft_measurer(prompt, args)
-    elif args.engine == "triton":
-        measurer = triton_perf.ttft_measurer(prompt, args)
     else:
         print(f"TTFT test not implemented for {args.engine}")
         return
@@ -78,12 +71,6 @@ def run_tpot(args):
     measurer = None
     if args.engine == "vllm":
         measurer = vllm_perf.tpot_measurer(prompt, args)
-    elif args.engine == "openai":
-        measurer = openai_perf.tpot_measurer(prompt, args)
-    elif args.engine == "tgi":
-        measurer = tgi_perf.tpot_measurer(prompt, args)
-    elif args.engine == "triton":
-        measurer = triton_perf.tpot_measurer(prompt, args)
     else:
         print(f"TPOT test not implemented for {args.engine}")
         return
@@ -104,12 +91,6 @@ def run_rate_throughput(args):
     measurer = None
     if args.engine == "vllm":
         measurer = vllm_perf.rate_throughput_measurer(prompt, args)
-    elif args.engine == "openai":
-        measurer = openai_perf.rate_throughput_measurer(prompt, args)
-    elif args.engine == "tgi":
-        measurer = tgi_perf.rate_throughput_measurer(prompt, args)
-    elif args.engine == "triton":
-        measurer = triton_perf.rate_throughput_measurer(prompt, args)
     else:
         print(f"Rate throughput test not implemented for {args.engine}")
         return
@@ -124,12 +105,6 @@ def run_rate_sampled_throughput(args):
     measurer = None
     if args.engine == "vllm":
         measurer = vllm_perf.sample_rate_throughput_measurer(args)
-    elif args.engine == "openai":
-        measurer = openai_perf.sample_rate_throughput_measurer(args)
-    elif args.engine == "tgi":
-        measurer = tgi_perf.sample_rate_throughput_measurer(args)
-    elif args.engine == "triton":
-        measurer = triton_perf.sample_rate_throughput_measurer(args)
     else:
         print(f"Rate sampled throughput test not implemented for {args.engine}")
         return
@@ -144,12 +119,6 @@ def run_rate_sampled_output_throughput(args):
     measurer = None
     if args.engine == "vllm":
         measurer = vllm_perf.sample_output_rate_throughput_measurer(args)
-    elif args.engine == "tgi":
-        measurer = tgi_perf.sample_output_rate_throughput_measurer(args)
-    elif args.engine == "openai":
-        measurer = openai_perf.sample_output_rate_throughput_measurer(args)
-    elif args.engine == "triton":
-        measurer = triton_perf.sample_output_rate_throughput_measurer(args)
     else:
         print(f"Rate sampled throughput test not implemented for {args.engine}")
         return
@@ -166,18 +135,6 @@ def add_engines_parser(base_parser, vllm_batch_size = False):
     vllm_parser.add_argument("--gpu_memory_utilization", type=float, default=0.9, help="GPU Memory fraction")
     if vllm_batch_size:
         vllm_parser.add_argument("--batch_size", type=int, default=128, help="The batch size.")
-
-    openai_parser = engine_parser.add_parser("openai", help="OpenAI Engine")
-    openai_parser.add_argument("--api_key", type=str, default="API_KEY", help="The OpenAI API Key")
-    openai_parser.add_argument("--api_base", type=str, default="http://localhost:8000/v1", help="The OpenAI Server URL")
-
-    triton_parser = engine_parser.add_parser("triton", help="Triton Engine")
-    triton_parser.add_argument("--model", type=str, default="ensemble", help="The model.")
-    triton_parser.add_argument("--http_server", type=str, default="http://localhost:8000", help="The Triton Server URL")
-    triton_parser.add_argument("--grpc_server", type=str, default="localhost:8001", help="The Triton gRPC Server URL")
-
-    tgi_parser = engine_parser.add_parser("tgi", help="Text-generation-inference Engine")
-    tgi_parser.add_argument("--server", type=str, default="http://127.0.0.1:80/", help="The TGI Server URL")
 
 
 if __name__ == "__main__":
@@ -234,6 +191,7 @@ if __name__ == "__main__":
     add_engines_parser(rsot_parser, True)
     
     args = parser.parse_args()
+    print(args)
 
 
     if args.test == "ttft":
