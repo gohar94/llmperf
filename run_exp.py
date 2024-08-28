@@ -11,9 +11,9 @@ n_iterations = 3
 n_input_tokens = 2048
 n_output_tokens = 256
 
-tests_ = ["tpot-ttft", "static_batch_throughput"]
-n_loras_ = [0, 1, 2, 4, 8, 16, 32, 64, 128]
-batch_size_ = [1, 2, 4, 8, 16, 32, 64]
+tests_ = ["static_batch_throughput", "tpot_ttft"]
+n_loras_ = [0, 1, 2, 4, 8, 16, 32, 64, 128, 256]
+batch_size_ = [1, 2, 4, 8, 16, 32, 64, 128, 256]
 
 def generate_filename_timestamp():
     now = datetime.now()

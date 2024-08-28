@@ -277,6 +277,7 @@ def init_llm(args):
     engineArgs = EngineArgs(args.model)
     engineArgs.trust_remote_code = True
     engineArgs.dtype = args.dtype
+    engineArgs.gpu_memory_utilization = args.gpu_memory_utilization
     engineArgs.max_num_seqs = args.batch_size
     engineArgs.disable_log_stats = True
     engineArgs.disable_log_requests = True

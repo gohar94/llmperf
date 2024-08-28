@@ -107,7 +107,7 @@ def run_tpot_ttft(args):
     if args.engine == "vllm":
         measurer = vllm_perf.tpot_ttft_measurer(prompt, args)
     else:
-        print(f"TPOT-TTFT test not implemented for {args.engine}")
+        print(f"TPOT_TTFT test not implemented for {args.engine}")
         return
     traces = run_multi_test_n_times(measurer, args.iterations)
     tpot_traces, ttft_traces = traces
@@ -225,7 +225,7 @@ if __name__ == "__main__":
     tpot_parser.add_argument("--output_tokens", type=int, default=128, help="Number of tokens to retrieve")
     add_engines_parser(tpot_parser)
 
-    tpot_ttft_parser = test_parser.add_parser("tpot-ttft", help="Measure Time Per Output Token (TPOT) and Time To First Token (TTFT)")
+    tpot_ttft_parser = test_parser.add_parser("tpot_ttft", help="Measure Time Per Output Token (TPOT) and Time To First Token (TTFT)")
     tpot_ttft_parser.add_argument("--tpot_output_file", type=str, default=None, help="Path to a file to write TPOT traces into.")
     tpot_ttft_parser.add_argument("--ttft_output_file", type=str, default=None, help="Path to a file to write TTFT traces into.")
     tpot_ttft_parser.add_argument("--prompt_file", type=str, help="Path to a file containing the prompt.")
@@ -275,7 +275,7 @@ if __name__ == "__main__":
         run_ttft(args)
     elif args.test == "tpot":
         run_tpot(args)
-    elif args.test == "tpot-ttft":
+    elif args.test == "tpot_ttft":
         run_tpot_ttft(args)
     elif args.test == "static_batch_throughput":
         run_static_batch(args)
