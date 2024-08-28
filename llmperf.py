@@ -35,7 +35,7 @@ def run_multi_test_n_times(test, n):
         print(f"Iteration {i}: {value_1} {value_2}")
         values_1.append(value_1)
         values_2.append(value_2)
-    print(f"Average: {total_1/n} {total_2}/n")
+    print(f"Average: {total_1/n} {total_2/n}")
     return values_1, values_2
 
 async def async_run_test_n_times(test, n):
