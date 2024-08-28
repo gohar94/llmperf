@@ -8,7 +8,8 @@ from huggingface_hub import snapshot_download
 
 def ttft_measurer(prompt, args):
     llm = init_llm(args)
-    lora_path = snapshot_download(repo_id=args.lora_path)
+    if args.lora_path:
+        lora_path = snapshot_download(repo_id=args.lora_path)
 
     def single_request():
         sampling_params = SamplingParams(
@@ -54,7 +55,8 @@ def ttft_measurer(prompt, args):
 
 def tpot_measurer(prompt, args):
     llm = init_llm(args)
-    lora_path = snapshot_download(repo_id=args.lora_path)
+    if args.lora_path:
+        lora_path = snapshot_download(repo_id=args.lora_path)
 
     def single_request():
         sampling_params = SamplingParams(
@@ -101,7 +103,8 @@ def tpot_measurer(prompt, args):
 
 def tpot_ttft_measurer(prompt, args):
     llm = init_llm(args)
-    lora_path = snapshot_download(repo_id=args.lora_path)
+    if args.lora_path:
+        lora_path = snapshot_download(repo_id=args.lora_path)
 
     def single_request():
         sampling_params = SamplingParams(
@@ -153,7 +156,8 @@ def tpot_ttft_measurer(prompt, args):
 
 def static_batch_measurer(prompt, args):
     llm = init_llm(args)
-    lora_path = snapshot_download(repo_id=args.lora_path)
+    if args.lora_path:
+        lora_path = snapshot_download(repo_id=args.lora_path)
 
     def single_request():
         sampling_params = SamplingParams(
