@@ -4,9 +4,11 @@ from vllm.engine.async_llm_engine import LLMEngine, AsyncLLMEngine
 from vllm.lora.request import LoRARequest
 from vllm.utils import random_uuid
 from timeit import default_timer as timer
+from huggingface_hub import snapshot_download
 
 def ttft_measurer(prompt, args):
     llm = init_llm(args)
+    lora_path = snapshot_download(repo_id=args.lora_path)
 
     def single_request():
         sampling_params = SamplingParams(
@@ -18,6 +20,8 @@ def ttft_measurer(prompt, args):
             lora_request = None
             if args.lora_path:
                 lora_id = i % args.num_loras
+                # lora_id must start from 1
+                lora_id += 1
                 lora_request = LoRARequest(
                         f"l-{lora_id}",
                         lora_id,
@@ -50,6 +54,7 @@ def ttft_measurer(prompt, args):
 
 def tpot_measurer(prompt, args):
     llm = init_llm(args)
+    lora_path = snapshot_download(repo_id=args.lora_path)
 
     def single_request():
         sampling_params = SamplingParams(
@@ -61,10 +66,12 @@ def tpot_measurer(prompt, args):
             lora_request = None
             if args.lora_path:
                 lora_id = i % args.num_loras
+                # lora_id must start from 1
+                lora_id += 1
                 lora_request = LoRARequest(
                         f"l-{lora_id}",
                         lora_id,
-                        args.lora_path
+                        lora_path
                 )
             llm.add_request(str(i),
                             prompt,
@@ -94,6 +101,7 @@ def tpot_measurer(prompt, args):
 
 def tpot_ttft_measurer(prompt, args):
     llm = init_llm(args)
+    lora_path = snapshot_download(repo_id=args.lora_path)
 
     def single_request():
         sampling_params = SamplingParams(
@@ -105,10 +113,12 @@ def tpot_ttft_measurer(prompt, args):
             lora_request = None
             if args.lora_path:
                 lora_id = i % args.num_loras
+                # lora_id must start from 1
+                lora_id += 1
                 lora_request = LoRARequest(
                         f"l-{lora_id}",
                         lora_id,
-                        args.lora_path
+                        lora_path
                 )
             llm.add_request(str(i),
                             prompt,
@@ -143,6 +153,7 @@ def tpot_ttft_measurer(prompt, args):
 
 def static_batch_measurer(prompt, args):
     llm = init_llm(args)
+    lora_path = snapshot_download(repo_id=args.lora_path)
 
     def single_request():
         sampling_params = SamplingParams(
@@ -154,10 +165,12 @@ def static_batch_measurer(prompt, args):
             lora_request = None
             if args.lora_path:
                 lora_id = i % args.num_loras
+                # lora_id must start from 1
+                lora_id += 1
                 lora_request = LoRARequest(
                         f"l-{lora_id}",
                         lora_id,
-                        args.lora_path
+                        lora_path
                 )
             llm.add_request(str(i),
                             prompt,
@@ -189,6 +202,8 @@ def rate_throughput_measurer(prompt, args):
         lora_request = None
         if args.lora_path:
             lora_id = req_num % args.num_loras
+            # lora_id must start from 1
+            lora_id += 1
             lora_request = LoRARequest(f"l-{lora_id}", lora_id, args.lora_path)
         request_id = random_uuid()
         results_generator = llm.generate(
